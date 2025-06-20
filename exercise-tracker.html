@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Exercise Tracker</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      padding: 20px;
+      background-color: #f0f2f5;
+    }
+
+    h1 {
+      text-align: center;
+    }
+
+    .formContainer,
+    .exercise-log {
+      max-width: 500px;
+      margin: 20px auto;
+      padding: 15px;
+      background-color: white;
+      border-radius: 8px;
+      box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+    }
+
+    input,
+    button {
+      padding: 10px;
+      margin: 5px 0;
+      width: 100%;
+      box-sizing: border-box;
+    }
+
+    button {
+      padding: 6px 12px;
+      font-size: 14px;
+      border-radius: 6px;
+      background-color: #f0f0f0;
+      border: 1px solid #636363;
+      cursor: pointer;
+    }
+
+    .entry {
+      border-bottom: 1px solid #ddd;
+      padding: 10px 0;
+    }
+
+    #share-btn {
+      padding: 6px 12px;
+      font-size: 14px;
+      border-radius: 6px;
+      background-color: #f0f0f0;
+      border: 1px solid #ccc;
+      cursor: pointer;
+    }
+
+    #share-btn:hover {
+      background-color: #e0e0e0;
+    }
+  </style>
+</head>
+
+<body>
+  <h1>Exercise Tracker</h1>
+
+
+  <div class="formContainer">
+    <button id="share-btn">🔗 Share Tracker</button>
+    <span id="share-msg" style="margin-left: 10px; color: green;"></span>
+
+    <form id="exerciseForm">
+
+      <input type="text" id="exercise" placeholder="Exercise Name (e.g., Push Ups)" required />
+      <input type="number" id="sets" placeholder="Number of Sets" required />
+      <input type="number" id="reps" placeholder="Reps per Set" required />
+      <button type="submit">Add Exercise</button>
+
+    </form>
+
+  </div>
+  <div class="exercise-log" id="log">
+    <h2>Exercise Log</h2>
+  </div>
+
+  <!-- Firebase SDK -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+    import { getFirestore, collection, addDoc, onSnapshot, query, orderBy } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyAKtjnxLy-TR4HAxiWEdOXL5FtOFJVD9VI",
+      authDomain: "exercise-tracker-ec50a.firebaseapp.com",
+      projectId: "exercise-tracker-ec50a",
+      storageBucket: "exercise-tracker-ec50a.firebasestorage.app",
+      messagingSenderId: "730269951943",
+      appId: "1:730269951943:web:ea1af9e115eb0306175be2"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+
+    function generateSecureHash(length = 20) {
+      const charset = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+      let hash = '';
+      for (let i = 0; i < length; i++) {
+        hash += charset.charAt(Math.floor(Math.random() * charset.length));
+      }
+      return hash;
+    }
+
+    // Get trackerId from URL query, e.g. ?id=abc123
+    const params = new URLSearchParams(window.location.search);
+    let trackerId = params.get("id") || window.location.hash.substring(1);
+
+    if (!params.get("id") && trackerId) {
+      window.location.search = `?id=${trackerId}`;
+    }
+
+
+    // If not found, generate a new one and redirect
+    if (!trackerId) {
+      trackerId = crypto.randomUUID() + crypto.randomUUID();
+      window.location.search = `?id=${trackerId}`;
+    }
+
+    const form = document.getElementById('exerciseForm');
+    const log = document.getElementById('log');
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+
+      const exercise = document.getElementById('exercise').value.trim();
+      const sets = parseInt(document.getElementById('sets').value);
+      const reps = parseInt(document.getElementById('reps').value);
+      const date = new Date().toLocaleDateString();
+
+      try {
+        await addDoc(collection(db, "trackers", trackerId, "entries"), {
+          exercise,
+          sets,
+          reps,
+          date,
+          timestamp: Date.now(),
+          trackerId // included to validate in rules
+        });
+      } catch (error) {
+        console.error("🔥 Firestore write failed:", error);
+        // alert("Error saving entry: " + error.message);
+      }
+
+      form.reset();
+    });
+
+    const q = query(collection(db, "trackers", trackerId, "entries"), orderBy("timestamp", "desc"));
+    onSnapshot(q, (snapshot) => {
+      log.innerHTML = '<h2>Exercise Log</h2>';
+      snapshot.forEach((doc) => {
+        const entry = doc.data();
+
+        const date = new Date(entry.timestamp);
+
+        const options = {
+          weekday: 'long',
+          year: 'numeric',
+          month: 'numeric',
+          day: 'numeric',
+          hour: 'numeric',
+          minute: '2-digit',
+          hour12: true
+        };
+
+        const timeStr = date ? date.toLocaleString('en-US', options) : "Unknown time";
+
+        const div = document.createElement('div');
+        div.className = 'entry';
+        div.innerHTML = `<strong>${timeStr}</strong><br>
+          Exercise: ${entry.exercise}<br>
+          Sets: ${entry.sets}, Reps: ${entry.reps}`;
+        log.appendChild(div);
+      });
+    });
+
+
+    const shareBtn = document.getElementById("share-btn");
+    const shareMsg = document.getElementById("share-msg");
+
+    shareBtn.addEventListener("click", async () => {
+      const url = window.location.toString();
+      try {
+        await navigator.clipboard.writeText(url);
+        shareMsg.textContent = "Copied!";
+        setTimeout(() => (shareMsg.textContent = ""), 2000);
+      } catch (err) {
+        console.error("Copy failed", err);
+        shareMsg.textContent = "Failed to copy";
+      }
+    });
+
+  </script>
+</body>
+
+</html>
